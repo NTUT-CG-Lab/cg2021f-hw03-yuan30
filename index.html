@@ -43,7 +43,7 @@
 			so.addChild("讀取作業 2 儲存的座標點在眼睛上繪製出分割線", 1, false);
 			so.addChild("可選擇當下控制哪個虹膜", 1, false);
 			so.addChild("按滑鼠左鍵控制虹膜移動，右鍵停止", 2, false);
-			so.addChild("複製參數至對應目標參數", 2, false);
+			so.addChild("複製參數至對應目標參數", 2, true);
 			so.addChild("可儲存虹膜轉動角度", 1, false);
 
 			//產生自評表，參數如下所示
@@ -265,31 +265,14 @@
 			// 設定 1~2 keyCode 
 			if ( keyCode === 49 || keyCode === 97 ) {
 
-				indexOfCameraSegments--;
-				if( indexOfCameraSegments < 1 ) {
-					indexOfCameraSegments = 1;
-					return;
-				}
-				if( camera.position.x > 0 )
-					camera.position.x = -0.5;
-				else
-					camera.position.x = 0.5;
-				camera.updateProjectionMatrix();
+				changeSegments( --indexOfCameraSegments );
 				return false;
 
 			}
 			if ( keyCode === 50 || keyCode === 98 ) {
 
-				indexOfCameraSegments++;
-				if( indexOfCameraSegments > 8 ) {
-					indexOfCameraSegments = 8;
-					return;
-				}
-				if( camera.position.x > 0 )
-					camera.position.x = -0.5;
-				else
-					camera.position.x = 0.5;
-				camera.updateProjectionMatrix();
+				//indexOfCameraSegments++;
+				changeSegments( ++indexOfCameraSegments );
 				return false;
 
 			}
@@ -331,6 +314,30 @@
 				return false;
 
 			}
+
+			// 按 Q 鍵複製眼睛旋轉參數至對應目標參數
+			if ( keyCode === 81 ) {
+
+				if(indexOfCameraSegments == 1) {
+					eyes[2].x = eyes[1].x;
+					indexOfCameraSegments = 2;
+				}
+				else if(indexOfCameraSegments == 3) {
+					eyes[4].x = eyes[3].x;
+					indexOfCameraSegments = 4;
+				}
+				else if(indexOfCameraSegments == 5) {
+					eyes[8].y  = -eyes[5].y;
+					indexOfCameraSegments = 8;
+				}
+				else if(indexOfCameraSegments == 7) {
+					eyes[6].y = -eyes[7].y;
+					indexOfCameraSegments = 6;
+				}
+				changeSegments( indexOfCameraSegments );
+				return false;
+
+			}
 		}
 
 		function onMouseMove( event ) {
@@ -358,6 +365,7 @@
 					//leftEyeFramePosition[indexOfLines] = pointer;
 				//}
 				//indexOfLines = -1;
+				// div id="info" return;
 				moving = true;
 				document.body.addEventListener( 'mousemove', onMouseMove );
 
@@ -367,6 +375,20 @@
 				moving = false;
 				document.body.removeEventListener( 'mousemove', onMouseMove );
 			}
+
+		}
+
+		function changeSegments( indexOfCameraSegments ) { // for the camera 
+
+			if( indexOfCameraSegments < 1 ) {
+					indexOfCameraSegments = 1;
+					return;
+				}
+			if( (indexOfCameraSegments % 2) == 0 ) // 要設位置0.5，照角色左眼
+				camera.position.x = 0.5;
+			else								   // 反過來要位置-0.5，照角色右眼
+				camera.position.x = -0.5;
+			camera.updateProjectionMatrix();
 
 		}
 
