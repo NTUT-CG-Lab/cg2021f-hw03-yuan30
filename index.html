@@ -41,11 +41,11 @@
 			so.addChild("繪製出 5 個畫面", 1, true);
 			so.addChild("回答問題", 1, true);
 			so.addChild("可按鍵選擇上 / 下一隻角色", 1, true);
-			so.addChild("讀取作業 2 儲存的座標點在眼睛上繪製出分割線", 1, false);
+			so.addChild("讀取作業 2 儲存的座標點在眼睛上繪製出分割線", 1, true);
 			so.addChild("可選擇當下控制哪個虹膜", 1, true);
 			so.addChild("按滑鼠左鍵控制虹膜移動，右鍵停止", 2, true);
 			so.addChild("複製參數至對應目標參數", 2, true);
-			so.addChild("可儲存虹膜轉動角度", 1, false);
+			so.addChild("可儲存虹膜轉動角度", 1, true);
 
 			//產生自評表，參數如下所示
 			so.renderModal(
@@ -92,7 +92,7 @@
 		let frustumSize = 30;
 		let camera, camera1, camera2, camera3, camera4;
 		let leftEye, rightEye, leftEyeLines, rightEyeLines;
-		let bothEyes = [];
+		let bothEyes = new Array(2);
 		let modelSelected = 0, indexOfCameraSegments = 1, moving = false;
 		let eyes = [
 			new THREE.Vector2(0,0),
@@ -106,7 +106,7 @@
 			new THREE.Vector2(0,-0.1),
 		];
 		const mousePosition = new THREE.Vector3(0,0,0);
-		const modelFiles = [];
+		const modelFiles = [], modelsEyesAngles = [];
 		Ammo().then(function (AmmoLib) {
 
 			Ammo = AmmoLib;
@@ -171,19 +171,25 @@
 			body.addEventListener( 'keydown', onKeyDown );
 			window.addEventListener('resize', onWindowResize);
 			
-			drawLine();
 			// 讀取 Json 檔案
 			let gift = $.getJSON('model_data.json', function(data) {
 				$.each(data.modellist, function(i, item){
-					console.log(item.location);
-					console.log(i);
-					console.log(item);
+
 					modelFiles.push(item);
+					setModelEyeAngle();
+
 				})
+				console.log( modelFiles );
 			});
 
 			// load 模型檔
 			loadModel();
+
+			// 初始化為 0
+			for( let i = 0; i < 24; i++) {
+				modelsEyesAngles.push(0);
+			}
+
 		}
 
 		function loadModel() {
@@ -198,7 +204,7 @@
 				}
 
 			}
-			let modelFile
+			let modelFile;
 			if( modelFiles[modelSelected] != null )
 				modelFile = modelFiles[modelSelected].location
 			else
@@ -213,20 +219,15 @@
 				mesh.name = 'model' + modelSelected;
 				mesh.position.y = - 10;
 				const bones = mesh.skeleton.bones;
-				//console.log(bones);
 				const boneNameDictionary = {};
 				for ( let i = 0, il = bones.length; i < il; i ++ ) {
-					//boneNameDictionary[ bones[ i ].name ] = i;
 					boneNameDictionary[ bones[ i ].name ] = i;
-					//if( bones[ i ].name === '左目' || bones[ i ].name === '右目' )
-						//console.log(bones[ i ].name);
 				}
-				console.log(bones[ boneNameDictionary[ '左目' ] ]);
-				console.log(bones[ boneNameDictionary[ '右目' ] ]);
+
 				leftEye = bones[ boneNameDictionary[ '左目' ] ];
 				rightEye = bones[ boneNameDictionary[ '右目' ] ];
-				bothEyes.push(leftEye);
-				bothEyes.push(rightEye);
+				bothEyes[ 0 ] = leftEye;
+				bothEyes[ 1 ] = rightEye;
 				scene.add(mesh);
 
 			}, onProgress, null);
@@ -280,14 +281,19 @@
 			// 設定 1~2 keyCode 
 			if ( keyCode === 49 || keyCode === 97 ) {
 
-				changeSegments( --indexOfCameraSegments );
+				if( --indexOfCameraSegments < 1 ) {
+					indexOfCameraSegments = 8;
+				}
+				changeSegments( indexOfCameraSegments );
 				return false;
 
 			}
 			if ( keyCode === 50 || keyCode === 98 ) {
 
-				//indexOfCameraSegments++;
-				changeSegments( ++indexOfCameraSegments );
+				if( ++indexOfCameraSegments > 8 ) {
+					indexOfCameraSegments = 1;
+				}
+				changeSegments( indexOfCameraSegments );
 				return false;
 
 			}
@@ -297,9 +303,6 @@
 
 				var selectedObject = scene.getObjectByName("model" + modelSelected);
 				scene.remove(selectedObject);
-				// for(let obj of objectOfLines) {
-				// 	scene.remove(obj);
-				// }
 
 				modelSelected--;
 
@@ -307,6 +310,7 @@
 					modelSelected += 3;
 
 				loadModel();
+				setModelEyeAngle();
 				return false;
 
 			}
@@ -316,9 +320,6 @@
 
 				var selectedObject = scene.getObjectByName("model" + modelSelected);
 				scene.remove(selectedObject);
-				// for(let obj of objectOfLines) {
-				// 	scene.remove(obj);
-				// }
 
 				modelSelected++;
 
@@ -326,6 +327,7 @@
 					modelSelected = 0;
 
 				loadModel();
+				setModelEyeAngle();
 				return false;
 
 			}
@@ -356,6 +358,113 @@
 				return false;
 
 			}
+
+			// 設定 S 鍵儲存虹膜轉動角度
+			if ( keyCode === 83 ) {
+				
+				if( modelFiles == null ) { // modelsEyesAngles[ (modelSelected+1)*8 - 1 ] != 0
+					return ;
+				}
+
+				// 預設 angles are 0;
+				const myData = {
+					"modellist":[
+						{
+						"location":modelFiles[0].location,
+						"line_locationx_1":modelFiles[0].line_locationx_1,
+						"line_locationy_1":modelFiles[0].line_locationy_1,
+						"line_locationx_2":modelFiles[0].line_locationx_2,
+						"line_locationy_2":modelFiles[0].line_locationy_2,
+						"line_locationx_3":modelFiles[0].line_locationx_3,
+						"line_locationy_3":modelFiles[0].line_locationy_3,
+						"line_locationx_4":modelFiles[0].line_locationx_4,
+						"line_locationy_4":modelFiles[0].line_locationy_4,
+						"Right_X_negative_angle_1":	modelsEyesAngles[0],
+						"Left_X_negative_angle_1":	modelsEyesAngles[1],
+						"Right_X_positive_angle_2":	modelsEyesAngles[2],
+						"Left_X_positive_angle_2":	modelsEyesAngles[3],
+						"Right_Y_negative_angle_3":	modelsEyesAngles[4],
+						"Left_Y_negative_angle_3":	modelsEyesAngles[5],
+						"Left_Y_positive_angle_4":	modelsEyesAngles[6],
+						"Right_Y_positive_angle_4":	modelsEyesAngles[7],
+						},
+						{
+						"location":modelFiles[1].location,
+						"line_locationx_1":modelFiles[1].line_locationx_1,
+						"line_locationy_1":modelFiles[1].line_locationy_1,
+						"line_locationx_2":modelFiles[1].line_locationx_2,
+						"line_locationy_2":modelFiles[1].line_locationy_2,
+						"line_locationx_3":modelFiles[1].line_locationx_3,
+						"line_locationy_3":modelFiles[1].line_locationy_3,
+						"line_locationx_4":modelFiles[1].line_locationx_4,
+						"line_locationy_4":modelFiles[1].line_locationy_4,
+						"Right_X_negative_angle_1":	modelsEyesAngles[8],
+						"Left_X_negative_angle_1":	modelsEyesAngles[9],
+						"Right_X_positive_angle_2":	modelsEyesAngles[10],
+						"Left_X_positive_angle_2":	modelsEyesAngles[11],
+						"Right_Y_negative_angle_3":	modelsEyesAngles[12],
+						"Left_Y_negative_angle_3":	modelsEyesAngles[13],
+						"Left_Y_positive_angle_4":	modelsEyesAngles[14],
+						"Right_Y_positive_angle_4":	modelsEyesAngles[15],
+						},
+						{
+						"location":modelFiles[2].location,
+						"line_locationx_1":modelFiles[2].line_locationx_1,
+						"line_locationy_1":modelFiles[2].line_locationy_1,
+						"line_locationx_2":modelFiles[2].line_locationx_2,
+						"line_locationy_2":modelFiles[2].line_locationy_2,
+						"line_locationx_3":modelFiles[2].line_locationx_3,
+						"line_locationy_3":modelFiles[2].line_locationy_3,
+						"line_locationx_4":modelFiles[2].line_locationx_4,
+						"line_locationy_4":modelFiles[2].line_locationy_4,
+						"Right_X_negative_angle_1":	modelsEyesAngles[16],
+						"Left_X_negative_angle_1":	modelsEyesAngles[17],
+						"Right_X_positive_angle_2":	modelsEyesAngles[18],
+						"Left_X_positive_angle_2":	modelsEyesAngles[19],
+						"Right_Y_negative_angle_3":	modelsEyesAngles[20],
+						"Left_Y_negative_angle_3":	modelsEyesAngles[21],
+						"Left_Y_positive_angle_4":	modelsEyesAngles[22],
+						"Right_Y_positive_angle_4":	modelsEyesAngles[23],
+						},
+					]
+				};
+				const myJson = JSON.stringify(myData);
+				//放入 fileData(json資料), fileName, type
+				download(myJson, 'model_data.json', 'application/json');
+				return false;
+
+			}
+		}
+
+		function download(data, filename, type) {
+			var file = new Blob([data], {type: type});
+			if (window.navigator.msSaveOrOpenBlob) // IE10+
+				window.navigator.msSaveOrOpenBlob(file, filename);
+			else { // Others
+				var a = document.createElement("a"),
+						url = URL.createObjectURL(file);
+				a.href = url;
+				a.download = filename;
+				console.log(url);
+				document.body.appendChild(a);
+				a.click();
+				setTimeout(function() {
+					document.body.removeChild(a);
+					window.URL.revokeObjectURL(url);  
+				}, 0); 
+			}
+		}
+
+		function setModelEyeAngle() {
+			let offset = modelSelected * 8;
+			eyes[1].x = modelsEyesAngles[ 0 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Right_X_negative_angle_1);
+			eyes[2].x = modelsEyesAngles[ 1 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Left_X_negative_angle_1);
+			eyes[3].x = modelsEyesAngles[ 2 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Right_X_positive_angle_2);
+			eyes[4].x = modelsEyesAngles[ 3 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Left_X_positive_angle_2);
+			eyes[5].y = modelsEyesAngles[ 4 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Right_Y_negative_angle_3);
+			eyes[6].y = modelsEyesAngles[ 5 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Left_Y_negative_angle_3);
+			eyes[7].y = modelsEyesAngles[ 6 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Left_Y_positive_angle_4);
+			eyes[8].y = modelsEyesAngles[ 7 + offset  ] = -THREE.MathUtils.degToRad(modelFiles[ modelSelected ].Right_Y_positive_angle_4);
 		}
 
 		function onMouseMove( event ) {
@@ -401,21 +510,21 @@
 		}
 
 		function cameraPosition() {
-			if( modelSelected == 0 ) {
+			if( modelSelected == 0 ) { // for kizunaai
 				camera.position.y = 8.2;
 				camera1.position.y = 8.1;
 				camera2.position.y = 8.1;
 				camera3.position.y = 8.1;
 				camera4.position.y = 8.1;
 			}
-			else if( modelSelected == 1 ) {
+			else if( modelSelected == 1 ) { // for 物述有栖
 				camera.position.y = 4.5;
 				camera1.position.y = 4.5;
 				camera2.position.y = 4.5;
 				camera3.position.y = 4.5;
 				camera4.position.y = 4.5;
 			}
-			else if( modelSelected == 2) {
+			else if( modelSelected == 2) { // for 天宮こころ(Kokoro Amamiya)
 				camera.position.y = 5.5;
 				camera1.position.y = 5.5;
 				camera2.position.y = 5.5;
@@ -425,10 +534,6 @@
 		}
 		function changeSegments( indexOfCameraSegments ) { // for the camera 
 
-			if( indexOfCameraSegments < 1 ) {
-					indexOfCameraSegments = 1;
-					return;
-				}
 			if( (indexOfCameraSegments % 2) == 0 ) // 要設位置0.5，照角色左眼
 				camera.position.x = 0.5;
 			else								   // 反過來要位置-0.5，照角色右眼
@@ -437,39 +542,62 @@
 
 		}
 
-		var line;
-		function drawLine() {
+		//var line;
+		function drawLine( side = -1 ) { // side = {-1, 1}。-1是看右眼，1是右眼
 
-			// 當每案一次按鍵都會重畫，因此要先移除。
-			// if(scene.getObjectByName("line" + indexOfLines) != null) {
-			// 	var selectedObject = scene.getObjectByName("line" + indexOfLines);
-			// 	scene.remove(selectedObject);
-			// }
+			if(modelFiles == null) {
+				return;
+			}
 
-			const points = [];
-			let material, indexOfLines=0;
-			if(indexOfLines % 2 == 0) {
+			let offset = 0;
+			for(let i = 0; i < 5; i++) {
+				const points = [];
 				points.push( new THREE.Vector3( -0.42, 0, 20 ) );
 				points.push( new THREE.Vector3( 0.42, 0, 20 ) );
-				material = new THREE.LineBasicMaterial( { color: 0x0000ff } );
-			}
-			else {
-				points.push( new THREE.Vector3( 0, -0.82, 20 ) );
-				points.push( new THREE.Vector3( 0, 0.82, 20 ) );
-				material = new THREE.LineBasicMaterial( { color: 0xff0080 } );
+				const material = new THREE.LineBasicMaterial( { color: 0x0000ff } );
+				const geometry = new THREE.BufferGeometry().setFromPoints( points );
+
+				const line = new THREE.Line( geometry, material );
+				scene.add( line );
+				line.name = "line" + i;
+				line.position.x = modelFiles[modelSelected].line_locationx_1;
+				line.position.x *= side;
+				line.position.y = modelFiles[modelSelected].line_locationy_1 - offset;
+
+				offset += (modelFiles[modelSelected].line_locationy_1 - modelFiles[modelSelected].line_locationy_3) / 4;
 			}
 
-			const geometry = new THREE.BufferGeometry().setFromPoints( points );
+			offset = 0;
+			for(let i = 0; i < 9; i++) {
+				const points = [];
+				points.push( new THREE.Vector3( 0, -0.42, 20 ) );
+				points.push( new THREE.Vector3( 0, 0.42, 20 ) );
+				const material = new THREE.LineBasicMaterial( { color: 0xff0080 } );
+				const geometry = new THREE.BufferGeometry().setFromPoints( points );
 
-			line = new THREE.Line( geometry, material );
-			scene.add( line );
-			line.name = "line" + indexOfLines;
-			line.position.x = -0.46097991807610905;
-			line.position.y = 8.402409374485611;
-			//objectOfLines.push( line );
+				const line = new THREE.Line( geometry, material );
+				scene.add( line );
+				line.name = "line" + (i+5);
+				line.position.x = modelFiles[modelSelected].line_locationx_2 - offset;
+				line.position.x *= side;
+				line.position.y = modelFiles[modelSelected].line_locationy_2;
+
+				offset += (modelFiles[modelSelected].line_locationx_2 - modelFiles[modelSelected].line_locationx_4) / 8;
+			}
 
 		}
 
+		function removeLine() {
+
+			for(let i = 0; i < 14; i++) {
+				if(scene.getObjectByName("line" + i) != null) {
+					var selectedObject = scene.getObjectByName("line" + i);
+					scene.remove(selectedObject);
+				}
+			}
+
+		}
+		
 		function animate() {
 
 			requestAnimationFrame(animate);
@@ -480,7 +608,7 @@
 		function render() {
 
 			effect.clear();
-			//drawLine();
+
 			cameraPosition();
 			if(rightEye == null)
 				return;
@@ -488,29 +616,18 @@
 			rightEye.rotation.copy(new THREE.Euler( 0, 0, 0, 'XYZ' ));
 			leftEye.rotation.copy(new THREE.Euler( 0, 0, 0, 'XYZ' ));
 			if(moving) {
-				if(indexOfCameraSegments == 1) {
-					rightEye.rotation.x = eyes[1].x = -mousePosition.y;
+				if( indexOfCameraSegments < 0 || indexOfCameraSegments > 8 )
+					return;
+
+				if( indexOfCameraSegments <= 4 ) {
+					bothEyes[ indexOfCameraSegments % 2 ].rotation.x = 
+						eyes[ indexOfCameraSegments ].x = -mousePosition.y;
+					bothEyes[ indexOfCameraSegments % 2 ].rotation.y = 0;
 				}
-				else if(indexOfCameraSegments == 2) {
-					leftEye.rotation.x = eyes[2].x = -mousePosition.y;
-				}
-				else if(indexOfCameraSegments == 3) {
-					rightEye.rotation.x = eyes[3].x = -mousePosition.y;
-				}
-				else if(indexOfCameraSegments == 4) {
-					leftEye.rotation.x = eyes[4].x = -mousePosition.y;
-				}
-				else if(indexOfCameraSegments == 5) {
-					rightEye.rotation.y = eyes[5].y = mousePosition.x;
-				}
-				else if(indexOfCameraSegments == 6) {
-					leftEye.rotation.y = eyes[6].y = mousePosition.x;
-				}
-				else if(indexOfCameraSegments == 7) {
-					rightEye.rotation.y = eyes[7].y = mousePosition.x;
-				}
-				else if(indexOfCameraSegments == 8) {
-					leftEye.rotation.y = eyes[8].y = mousePosition.x;
+				else {
+					bothEyes[ indexOfCameraSegments % 2 ].rotation.y = 
+						eyes[ indexOfCameraSegments ].y = mousePosition.x;
+					bothEyes[ indexOfCameraSegments % 2 ].rotation.x = 0;
 				}
 			}
 			else {
@@ -518,7 +635,10 @@
 				// index 為奇數是右眼、偶數是左眼。先分哪幾顆眼睛改 rotation 的 x or y 
 				// 前4顆眼睛改 x(camera1、cemera2)；後4顆眼睛改 y(camera3、cemera4)。
 				// bothEyes = {rightEye, leftEye}。
-				if(indexOfCameraSegments <=4) {
+				if( indexOfCameraSegments < 0 || indexOfCameraSegments > 8 )
+					return;
+
+				if( indexOfCameraSegments <= 4 ) {
 					bothEyes[indexOfCameraSegments % 2].rotation.x = eyes[0].x;
 					bothEyes[indexOfCameraSegments % 2].rotation.y = 0;
 				}
@@ -526,52 +646,92 @@
 					bothEyes[indexOfCameraSegments % 2].rotation.y = eyes[0].y;
 					bothEyes[indexOfCameraSegments % 2].rotation.x = 0;
 				}
+
+				// 當滑鼠不動時，將當前所有轉動角度放至 modelsEyesAngles
+				for( var i = 0; i < 8; i++ ) {
+
+					let offset = i + modelSelected * 8;
+					if( i < 4 ) {
+						modelsEyesAngles[offset] = THREE.MathUtils.radToDeg(-eyes[i+1].x);
+					}
+					else {
+						modelsEyesAngles[offset] = THREE.MathUtils.radToDeg(-eyes[i+1].y);
+					}
+
+				}
 			}
-			//if(moving)
-				//console.log(mousePosition);
+
+			removeLine();
+			if( indexOfCameraSegments % 2 == 1 ) {
+				drawLine(-1);
+			}
+			else if( indexOfCameraSegments % 2 == 0 ) {
+				drawLine(1);
+			}
 			effect.setViewport(0, 0, SCREEN_WIDTH / 2, SCREEN_HEIGHT);
 			effect.render(scene, camera);
 
-			if( indexOfCameraSegments != 1 || indexOfCameraSegments != 2) {
-				//這裡 camera1 中的左右眼不能隨滑鼠移動
-				rightEye.rotation.x=eyes[1].x;
-				rightEye.rotation.y=eyes[1].y;
-				leftEye.rotation.x=eyes[2].x;
-				leftEye.rotation.y=eyes[2].y;
+			//這裡 camera1 前，右邊畫面左上
+			rightEye.rotation.x=eyes[1].x;
+			rightEye.rotation.y=eyes[1].y;
+			leftEye.rotation.x=eyes[2].x;
+			leftEye.rotation.y=eyes[2].y;
+			
+			removeLine();
+			if( indexOfCameraSegments == 1 ) {
+				drawLine(-1);
+			}
+			else if( indexOfCameraSegments == 2 ) {
+				drawLine(1);
 			}
 			effect.setViewport(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
 			effect.render(scene, camera1);
 
-			// if( indexOfCameraSegments != 3 || indexOfCameraSegments != 4) {
-			// 	//這裡 camera2 中的左右眼不能隨滑鼠移動
-			// 	//讀取之前的 iris rotation
-			// 	rightEye.rotation.x=eyes[3].x;
-			// 	leftEye.rotation.x=eyes[4].x;
-			// }
+			//這裡 camera2 前，右邊畫面右上
 			rightEye.rotation.x=eyes[3].x;
 			rightEye.rotation.y=eyes[3].y;
 			leftEye.rotation.x=eyes[4].x;
 			leftEye.rotation.y=eyes[4].y;
+
+			removeLine();
+			if( indexOfCameraSegments == 3 ) {
+				drawLine(-1);
+			}
+			else if( indexOfCameraSegments == 4 ) {
+				drawLine(1);
+			}
 			effect.setViewport(SCREEN_WIDTH / 2 + SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
 			effect.render(scene, camera2);
 
-			// if( indexOfCameraSegments != 5 || indexOfCameraSegments != 6) {
-			// 	//這裡 camera3 中的左右眼不能隨滑鼠移動
-			// 	//讀取之前的 iris rotation
-			// 	rightEye.rotation.y = eyes[5].y;
-			// 	leftEye.rotation.y = eyes[6].y;
-			// }
+			//這裡 camera3 前，右邊畫面左下
 			rightEye.rotation.x=eyes[5].x;
 			rightEye.rotation.y=eyes[5].y;
 			leftEye.rotation.x=eyes[6].x;
 			leftEye.rotation.y=eyes[6].y;
+
+			removeLine();
+			if( indexOfCameraSegments == 5 ) {
+				drawLine(-1);
+			}
+			else if( indexOfCameraSegments == 6 ) {
+				drawLine(1);
+			}
 			effect.setViewport(SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
 			effect.render(scene, camera3);
 
+			//這裡 camera4 前，右邊畫面右下
 			rightEye.rotation.x=eyes[7].x;
 			rightEye.rotation.y=eyes[7].y;
 			leftEye.rotation.x=eyes[8].x;
 			leftEye.rotation.y=eyes[8].y;
+
+			removeLine();
+			if( indexOfCameraSegments == 7 ) {
+				drawLine(-1);
+			}
+			else if( indexOfCameraSegments == 8 ) {
+				drawLine(1);
+			}			
 			effect.setViewport(SCREEN_WIDTH / 2 + SCREEN_WIDTH / 4, 0, SCREEN_WIDTH / 4, SCREEN_HEIGHT / 2);
 			effect.render(scene, camera4);
 		}
